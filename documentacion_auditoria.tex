@@ -1,0 +1,334 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\geometry{margin=2.5cm}
+\onehalfspacing
+
+\lstdefinestyle{php}{language=php, backgroundcolor=\color{white}, basicstyle=\tiny\ttfamily, frame=single, showstringspaces=false}
+\lstdefinestyle{html}{language=html, backgroundcolor=\color{white}, basicstyle=\tiny\ttfamily, frame=single, showstringspaces=false}
+\lstdefinestyle{js}{language=javascript, backgroundcolor=\color{white}, basicstyle=\tiny\ttfamily, frame=single, showstringspaces=false}
+\lstdefinestyle{css}{language=css, backgroundcolor=\color{white}, basicstyle=\tiny\ttfamily, frame=single, showstringspaces=false}
+
+\begin{document}
+
+% PORTADA
+\begin{titlepage}
+\begin{center}
+{\LARGE \textbf{SISTEMA DBRH}}\\
+{\large \textbf{Base de Datos de Recursos Humanos}}\\[2cm]
+
+{\large \textbf{DOCUMENTACIÓN TÉCNICA PARA AUDITORÍA}}\\[1cm]
+
+{\large \textbf{Tecnologías Utilizadas}}\\[0.5cm]
+\begin{itemize}
+\item PHP 7+ (Backend y API REST)
+\item HTML5 (Vistas y estructuras)
+\item CSS3 con Tailwind CSS (Estilos)
+\item JavaScript con Alpine.js (Interactividad frontend)
+\item MySQL (Base de datos)
+\item PhpSpreadsheet (Manejo de archivos Excel)
+\item SimpleXLSX (Librería complementaria Excel)
+\item Font Awesome (Iconografía)
+\end{itemize}
+
+\vfill
+
+{\large \textbf{Fecha de Generación:}}\\
+{\large \today}
+
+\end{center}
+\end{titlepage}
+
+% ALCANCE DEL DOCUMENTO
+\section{ALCANCE DEL DOCUMENTO}
+La presente documentación técnica cubre el análisis del sistema DBRH (Base de Datos de Recursos Humanos), incluyendo la arquitectura del software, componentes backend desarrollados en PHP, interfaces frontend construidas en HTML/CSS/JavaScript, y la estructura de base de datos MySQL. Se evalúan las funcionalidades de gestión de empleados, manejo de archivos, importación/exportación de datos y configuración administrativa.
+
+% DESCRIPCIÓN GENERAL DEL SISTEMA
+\section{DESCRIPCIÓN GENERAL DEL SISTEMA}
+El sistema DBRH constituye una aplicación web de gestión de recursos humanos que permite administrar información de empleados de una organización. El sistema implementa funcionalidades de búsqueda avanzada con filtros departamentales, gestión completa de empleados incluyendo carga de fotografías y documentos, definición de campos personalizados dinámicos, importación masiva desde archivos Excel y exportación de información. La arquitectura sigue un patrón MVC simplificado con vistas PHP, API REST en PHP puro, y base de datos MySQL. El flujo operativo inicia con la autenticación, continúa con la consulta y visualización de empleados, permite operaciones CRUD mediante la API, y maneja archivos subidos al servidor con validación de tipos y tamaños.
+
+% ESTRUCTURA DEL PROYECTO
+\section{ESTRUCTURA DEL PROYECTO}
+El proyecto se organiza en una estructura de directorios funcional que separa responsabilidades. La raíz contiene los archivos de configuración principal, documentación del proyecto, y las vistas principales. El directorio api/ concentra todos los endpoints REST desarrollados en PHP para operaciones de empleados, campos adicionales, importación/exportación, y manejo de archivos. El directorio config/ almacena configuraciones de conexión a base de datos y funciones auxiliares. El directorio lib/ contiene librerías externas para procesamiento de archivos Excel. El directorio vendor/ aloja dependencias gestionadas por Composer. Los archivos uploads/ y subdirectorios (fotos/, archivos/) almacenan recursos físicos subidos por usuarios.
+
+% COMPONENTES BACKEND (PHP)
+\section{COMPONENTES BACKEND (PHP)}
+
+\subsection{config/config.php}
+Configuración global del sistema que define constantes de rutas, tamaños máximos de archivo, y funciones auxiliares. Implementa funciones de autenticación básica, sanitización de entrada, formateo de moneda, y manejo seguro de uploads de archivos con validación de tipos MIME.
+
+\begin{lstlisting}[style=php]
+define('BASE_PATH', __DIR__ . '/..');
+define('UPLOAD_PATH', BASE_PATH . '/uploads/');
+define('MAX_FILE_SIZE', 10 * 1024 * 1024);
+\end_lstlisting}
+
+\subsection{config/database.php}
+Clase de conexión a base de datos MySQL utilizando PDO. Configura parámetros de conexión, manejo de errores, y establece conexión con la base de datos dbrh_empleados.
+
+\begin lstlisting}[style=php]
+private $host = 'localhost';
+private $db_name = 'dbrh_empleados';
+private $username = 'root';
+private $password = '';
+private $conn;
+\end lstlisting}
+
+\subsection{api/empleados.php}
+API principal del sistema que maneja operaciones CRUD de empleados. Implementa endpoints para búsqueda, departamentos, campos adicionales, y exportación de datos. Utiliza PDO para consultas parametrizadas y manejo seguro de datos.
+
+\begin lstlisting}[style=php]
+public function handleRequest() {
+    $method = $_SERVER['REQUEST_METHOD'];
+    $action = $_GET['action'] ?? $_POST['action'] ?? '';
+    
+    switch ($method) {
+        case 'GET':
+            switch ($action) {
+                case 'departamentos':
+                    $this->getDepartamentos();
+                    break;
+            }
+    }
+}
+\end lstlisting}
+
+\subsection{api/campos.php}
+API para gestión de campos adicionales dinámicos. Permite crear, modificar, activar y desactivar campos personalizables con diferentes tipos de datos (texto, número, fecha, archivo, select, multiple).
+
+\begin lstlisting}[style=php]
+public function handleRequest() {
+    $method = $_SERVER['REQUEST_METHOD'];
+    $action = $_GET['action'] ?? $_POST['action'] ?? '';
+    
+    switch ($method) {
+        case 'POST':
+            if ($action === 'create') {
+                return $this->createCampo();
+            } elseif ($action === 'update') {
+                return $this->updateCampo();
+            }
+    }
+}
+\end lstlisting}
+
+\subsection{api/import\_phpspreadsheet.php}
+Endpoint para importación masiva de empleados desde archivos Excel (.xlsx). Utiliza PhpSpreadsheet para leer archivos, valida estructura de datos, y procesa registros para inserción en base de datos.
+
+\begin lstlisting}[style=php]
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+
+$spreadsheet = IOFactory::load($filePath);
+$worksheet = $spreadsheet->getActiveSheet();
+$data = $worksheet->toArray();
+\end lstlisting}
+
+\subsection{api/export\_empleados.php}
+Genera archivo Excel con información completa de empleados utilizando PhpSpreadsheet. Incluye datos personales, información laboral, y campos adicionales configurados.
+
+\begin lstlisting}[style=php]
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+
+$spreadsheet = new Spreadsheet();
+$sheet = $spreadsheet->getActiveSheet();
+\end lstlisting}
+
+\subsection{api/upload.php}
+Maneja subida segura de archivos al servidor. Valida tipos MIME, verifica tamaños, genera nombres únicos, y almacena archivos en directorios específicos (fotos/ o archivos/).
+
+\begin lstlisting}[style=php]
+if (!in_array($file['type'], $allowedTypes)) {
+    return ['success' => false, 'error' => 'Tipo de archivo no permitido'];
+}
+$filename = uniqid() . '_' . time() . '.' . $extension;
+\end lstlisting}
+
+\subsection{api/download.php}
+Proporciona descarga segura de archivos subidos. Valida permisos de usuario, verifica existencia del archivo, y gestiona headers HTTP para descarga controlada.
+
+\begin lstlisting}[style=php]
+$filePath = UPLOAD_PATH . 'archivos/' . $filename;
+if (!file_exists($filePath)) {
+    http_response_code(404);
+    exit('Archivo no encontrado');
+}
+\end lstlisting}
+
+\subsection{api/get\_image.php}
+Endpoint especializado para servir imágenes de empleados de forma segura. Valida permisos, redimensiona imágenes si es necesario, y gestiona cache de archivos.
+
+\begin lstlisting}[style=php]
+$empleadoId = $_GET['empleado_id'] ?? null;
+$campoId = $_GET['campo_id'] ?? null;
+$fileInfo = $this->getFileInfo($empleadoId, $campoId);
+\end lstlisting}
+
+\subsection{api/template.php}
+Genera plantilla Excel vacía con estructura correcta para importación masiva. Define columnas requeridas y formato estándar para datos de empleados.
+
+\begin lstlisting}[style=php]
+$spreadsheet = new Spreadsheet();
+$sheet = $spreadsheet->getActiveSheet();
+$sheet->setCellValue('A1', 'Ficha');
+$sheet->setCellValue('B1', 'Nombre');
+\end lstlisting}
+
+% COMPONENTES FRONTEND (VISTAS HTML/PHP)
+\section{COMPONENTES FRONTEND (VISTAS HTML/PHP)}
+
+\subsection{index.php}
+Vista principal del sistema que presenta interfaz de búsqueda de empleados, listado de resultados, formularios de edición, y modales de visualización. Utiliza Tailwind CSS para diseño responsivo y Alpine.js para interactividad.
+
+\begin lstlisting}[style=html]
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBRH - Base de Datos de Empleados</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="empleadoApp()" x-init="init()">
+\end lstlisting}
+
+\subsection{admin.php}
+Panel administrativo con navegación por pestañas para gestión de empleados y campos adicionales. Interface modificada para funcionalidades administrativas con Tailwind CSS y Alpine.js.
+
+\begin lstlisting}[style=html]
+<nav class="flex">
+    <button @click="activeTab = 'empleados'" 
+            :class="activeTab === 'empleados' ? 'border-blue-500 text-blue-600 bg-blue-50' : 'border-transparent text-gray-500 hover:text-gray-700'"
+            class="px-6 py-3 border-b-2 font-medium text-sm">
+        <i class="fas fa-users mr-2"></i>Empleados
+    </button>
+</nav>
+\end lstlisting}
+
+% COMPONENTES JAVASCRIPT
+\section{COMPONENTES JAVASCRIPT}
+El sistema utiliza Alpine.js como framework JavaScript progresivo embebido directamente en las vistas PHP. La lógica JavaScript se estructura dentro de componentes Alpine.js que manejan estado reactivo, interacciones de usuario, y comunicación con la API.
+
+\subsection{empleadoApp() - index.php}
+Componente principal de la vista de empleados que maneja búsqueda avanzada, paginación, formularios de edición, modales de importación, y actualización dinámica de contenido. Implementa validaciones de formularios, manejo de estados de carga, y procesamiento de respuestas de API.
+
+\begin lstlisting}[style=js]
+function empleadoApp() {
+    return {
+        empleados: [],
+        searchTerm: '',
+        selectedDepartamento: 'todos',
+        showImportModal: false,
+        importing: false,
+        
+        searchEmployee() {
+            const params = new URLSearchParams({
+                action: 'search',
+                search: this.searchTerm,
+                departamento: this.selectedDepartamento
+            });
+            fetch(`api/empleados.php?${params}`)
+                .then(response => response.json())
+                .then(data => this.empleados = data);
+        }
+    }
+}
+\end lstlisting}
+
+\subsection{adminApp() - admin.php}
+Componente administrativo que gestiona pestañas de navegación, formularios de empleados, configuración de campos adicionales, validaciones de datos, y sincronización con endpoints de API para operaciones CRUD administrativas.
+
+\begin lstlisting}[style=js]
+function adminApp() {
+    return {
+        activeTab: 'empleados',
+        empleados: [],
+        camposAdicionales: [],
+        
+        saveEmpleado() {
+            const formData = new FormData(document.getElementById('empleadoForm'));
+            fetch('api/empleados.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.loadEmpleados();
+                }
+            });
+        }
+    }
+}
+\end lstlisting}
+
+% COMPONENTES DE ESTILO (CSS)
+\section{COMPONENTES DE ESTILO (CSS)}
+El sistema utiliza Tailwind CSS como framework de estilos principales y CSS personalizado embebido para configuraciones específicas. Font Awesome proporciona iconografía consistente en toda la aplicación.
+
+\subsection{Tailwind CSS Framework}
+Framework CSS utility-first implementado vía CDN que proporciona sistema de diseño responsivo, componentes de interfaz, utilidades de espaciado, tipografía, y sistema de colores consistente. Se utiliza para layouts, grids, botones, formularios, modales, y componentes interactivos.
+
+\begin lstlisting}[style=css]
+/* Clase principal de Tailwind CSS */
+.bg-slate-50 text-slate-800 min-h-screen
+container mx-auto px-4 py-8
+bg-white shadow-sm rounded-xl mb-8 border border-slate-200
+bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg
+flex flex-wrap justify-between items-center gap-4
+\end lstlisting}
+
+\subsection{CSS Personalizado - index.php}
+Estilos específicos embebidos que extienden Tailwind CSS con configuraciones de fuentes personalizadas, resolución de conflictos de renderizado, y ajustes de appearance para componentes Alpine.js.
+
+\begin lstlisting}[style=css]
+body { 
+    font-family: 'Inter', sans-serif; 
+}
+/* Solución para el parpadeo de los modales en Alpine.js */
+[x-cloak] { 
+    display: none !important; 
+}
+\end lstlisting}
+
+\subsection{CSS Personalizado - admin.php}
+Estilos administrativos específicos para el panel de gestión, navegación por pestañas, estados activos/inactivos, y componentes de administración con validación de formularios.
+
+\begin lstlisting}[style=css]
+/* Estilos para navegación por pestañas */
+.border-blue-500 text-blue-600 bg-blue-50
+.border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300
+/* Estilos para tablas de administración */
+table.empleados-table th, table.empleados-table td
+/* Estilos para formularios administrativos */
+input.form-input, select.form-select, textarea.form-textarea
+\end lstlisting}
+
+\subsection{Font Awesome Integration}
+Iconografía vectorial consistente implementada vía CDN que proporciona iconos para navegación, acciones de usuario, estados de sistema, y elementos de interfaz en toda la aplicación.
+
+\begin lstlisting}[style=css]
+<!-- Iconos principales utilizados -->
+<i class="fas fa-users"></i> <!-- Gestión de empleados -->
+<i class="fas fa-cog"></i> <!-- Configuración/Administración -->
+<i class="fas fa-download"></i> <!-- Descargas -->
+<i class="fas fa-file-export"></i> <!-- Exportar datos -->
+<i class="fas fa-file-excel"></i> <!-- Importar Excel -->
+<i class="fas fa-search"></i> <!-- Búsqueda -->
+<i class="fas fa-edit"></i> <!-- Editar -->
+<i class="fas fa-trash"></i> <!-- Eliminar -->
+<i class="fas fa-eye"></i> <!-- Visualizar -->
+<i class="fas fa-upload"></i> <!-- Subir archivos -->
+<i class="fas fa-image"></i> <!-- Imágenes -->
+<i class="fas fa-file"></i> <!-- Documentos -->
+</ lstlisting}
+
+\end{document}
