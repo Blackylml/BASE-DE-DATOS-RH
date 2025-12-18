@@ -1,0 +1,13 @@
+Para instalar PhpSpreadsheet, ejecuta estos comandos en la terminal:
+
+1. Asegúrate de estar en el directorio del proyecto:
+   cd C:\xampp2\htdocs\web\DBRH
+
+2. Instala Composer si no lo tienes:
+   - Ve a https://getcomposer.org/download/
+   - Descarga e instala Composer
+
+3. Instala PhpSpreadsheet:
+   composer require phpoffice/phpspreadsheet
+
+4. Una vez instalado, se creará la carpeta 'vendor' con todas las librerías.
